@@ -7,9 +7,8 @@ export default function AgentUI() {
   const [liveTranscript, setLiveTranscript] = useState<any[]>([]);
   
   const recognitionRef = useRef<any>(null);
-  const scrollRef = useRef<HTMLDivElement>(null); 
   
-  // Kotha Ref: Mobile lo mic cut avvakunda track cheyadaniki
+  // మొబైల్ లో మైక్ కట్ అవ్వకుండా ఆటో-రీస్టార్ట్ ట్రాక్ చేయడానికి
   const isRecordingRef = useRef(false);
 
   useEffect(() => {
@@ -26,12 +25,13 @@ export default function AgentUI() {
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               const text = event.results[i][0].transcript;
-              setLiveTranscript(prev => [...prev, { id: Date.now(), role: 'Speaker', text: text }]);
+              // కొత్త లాజిక్: స్క్రోల్ చేయాల్సిన పని లేకుండా కొత్త మెసేజ్ ముందే (Top) పడుతుంది
+              setLiveTranscript(prev => [{ id: Date.now(), role: 'Speaker', text: text }, ...prev]);
             }
           }
         };
 
-        // Kotha Logic: Mobile browser mic ni aapeyste, ventane auto-restart chestundi
+        // ఆటో-రీస్టార్ట్ లాజిక్ (మొబైల్ బ్రౌజర్ ఆటోమేటిక్ గా మైక్ ఆపితే, వెంటనే మళ్లీ స్టార్ట్ చేస్తుంది)
         recognitionRef.current.onend = () => {
           if (isRecordingRef.current && recognitionRef.current) {
             try {
@@ -49,21 +49,15 @@ export default function AgentUI() {
     }
   }, []);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [liveTranscript]);
-
   const handleCallToggle = () => {
     if (isRecording) {
       setIsRecording(false);
-      isRecordingRef.current = false; // Call aapesam ani ref ki cheptunnam
+      isRecordingRef.current = false;
       setShowSummary(true);
       if (recognitionRef.current) recognitionRef.current.stop();
     } else {
       setIsRecording(true);
-      isRecordingRef.current = true; // Call start ayyindi ani ref ki cheptunnam
+      isRecordingRef.current = true;
       setShowSummary(false);
       setLiveTranscript([]);
       if (recognitionRef.current) recognitionRef.current.start();
@@ -72,6 +66,8 @@ export default function AgentUI() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-6 font-sans relative">
+      
+      {/* Navbar / Header */}
       <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
         <div>
           <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
@@ -83,13 +79,16 @@ export default function AgentUI() {
         <button 
           onClick={handleCallToggle}
           className={`px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 ${
-            isRecording ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-emerald-500 hover:bg-emerald-600'
+            isRecording 
+              ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
+              : 'bg-emerald-500 hover:bg-emerald-600'
           }`}
         >
           {isRecording ? '🛑 End Live Call' : '🎙️ Start Call'}
         </button>
       </header>
 
+      {/* 3-Column Layout */}
       <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all ${showSummary ? 'blur-sm pointer-events-none' : ''}`}>
         
         {/* Column 1: Live English Transcript */}
@@ -99,14 +98,14 @@ export default function AgentUI() {
             <h2 className="text-lg font-semibold text-gray-200">Live Transcript</h2>
           </div>
           
-          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
             {liveTranscript.length === 0 ? (
               <p className="text-gray-500 text-sm text-center mt-10 italic">
                 {isRecording ? "Listening... మైక్ లో మాట్లాడండి..." : "కాల్ స్టార్ట్ చేయడానికి పైన బటన్ నొక్కండి."}
               </p>
             ) : (
               liveTranscript.map((msg) => (
-                <div key={msg.id} className="bg-gray-700/50 p-3 rounded-lg border border-gray-600/50 transition-all animate-in fade-in slide-in-from-bottom-2">
+                <div key={msg.id} className="bg-gray-700/50 p-3 rounded-lg border border-gray-600/50 transition-all animate-in fade-in slide-in-from-top-2">
                   <p className="text-sm text-blue-300 font-semibold mb-1">{msg.role}:</p>
                   <p className="text-md leading-relaxed">{msg.text}</p>
                 </div>
