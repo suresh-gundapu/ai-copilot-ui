@@ -1,69 +1,163 @@
-import Image from "next/image";
+"use client";
+import React, { useState, useEffect, useRef } from 'react';
 
-export default function Home() {
+export default function AgentUI() {
+  const [isRecording, setIsRecording] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  
+  // లైవ్ ఆడియో టెక్స్ట్ ని స్టోర్ చేసుకోవడానికి
+  const [liveTranscript, setLiveTranscript] = useState([]);
+  const recognitionRef = useRef(null);
+  const scrollRef = useRef(null); // ఆటోమేటిక్ గా కిందికి స్క్రోల్ అవ్వడానికి
+
+  useEffect(() => {
+    // బ్రౌజర్ లో Web Speech API ఉందో లేదో చెక్ చేస్తున్నాం
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true; // కంటిన్యూ గా వినడానికి
+        recognitionRef.current.interimResults = false; // ఫైనల్ రిజల్ట్ మాత్రమే తీసుకోవడానికి
+        recognitionRef.current.lang = 'en-US'; // ఇంగ్లీష్ భాష సెటప్
+
+        recognitionRef.current.onresult = (event) => {
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              const text = event.results[i][0].transcript;
+              
+              // వచ్చిన టెక్స్ట్ ని మన UI లిస్ట్ లోకి యాడ్ చేస్తున్నాం
+              setLiveTranscript(prev => [...prev, { id: Date.now(), role: 'Speaker', text: text }]);
+              
+              // ఫ్యూచర్ లో ఈ 'text' నే మనం వెబ్‌సాకెట్స్ ద్వారా FastAPI బ్యాకెండ్ కి పంపుతాం
+            }
+          }
+        };
+
+        recognitionRef.current.onerror = (event) => {
+          console.error("మైక్ ఎర్రర్: ", event.error);
+        };
+      } else {
+        alert("నీ బ్రౌజర్ లో Speech API కి సపోర్ట్ లేదు. క్రోమ్ (Chrome) వాడటానికి ట్రై చెయ్!");
+      }
+    }
+  }, []);
+
+  // కొత్త టెక్స్ట్ రాగానే ఆటోమేటిక్ గా కిందికి స్క్రోల్ అయ్యే లాజిక్
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [liveTranscript]);
+
+  // కాల్ స్టార్ట్ / స్టాప్ బటన్ లాజిక్
+  const handleCallToggle = () => {
+    if (isRecording) {
+      // కాల్ ఆపినప్పుడు
+      setIsRecording(false);
+      setShowSummary(true);
+      if (recognitionRef.current) recognitionRef.current.stop();
+    } else {
+      // కాల్ స్టార్ట్ చేసినప్పుడు
+      setIsRecording(true);
+      setShowSummary(false);
+      setLiveTranscript([]); // కొత్త కాల్ స్టార్ట్ చేసినప్పుడు పాత టెక్స్ట్ క్లియర్ చేయడం
+      if (recognitionRef.current) recognitionRef.current.start();
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-6 font-sans relative">
+      
+      {/* Navbar / Header */}
+      <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+            AI Co-Pilot Agent 🚀
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+          <p className="text-sm text-gray-400 mt-1">HMCA Legacy Data Fix - Context Active</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        
+        <button 
+          onClick={handleCallToggle}
+          className={`px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 ${
+            isRecording 
+              ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
+              : 'bg-emerald-500 hover:bg-emerald-600'
+          }`}
+        >
+          {isRecording ? '🛑 End Live Call' : '🎙️ Start Call'}
+        </button>
+      </header>
+
+      {/* 3-Column Layout */}
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all ${showSummary ? 'blur-sm pointer-events-none' : ''}`}>
+        
+        {/* Column 1: Live English Transcript */}
+        <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-2xl flex flex-col h-[75vh]">
+          <div className="flex items-center mb-4">
+            <div className={`w-3 h-3 rounded-full mr-2 ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
+            <h2 className="text-lg font-semibold text-gray-200">Live Transcript</h2>
+          </div>
+          
+          {/* ఇక్కడే మనం రియల్ టైమ్ టెక్స్ట్ చూపిస్తున్నాం */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
+            {liveTranscript.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center mt-10 italic">
+                {isRecording ? "Listening... మైక్ లో మాట్లాడండి..." : "కాల్ స్టార్ట్ చేయడానికి పైన బటన్ నొక్కండి."}
+              </p>
+            ) : (
+              liveTranscript.map((msg) => (
+                <div key={msg.id} className="bg-gray-700/50 p-3 rounded-lg border border-gray-600/50 transition-all animate-in fade-in slide-in-from-bottom-2">
+                  <p className="text-sm text-blue-300 font-semibold mb-1">{msg.role}:</p>
+                  <p className="text-md leading-relaxed">{msg.text}</p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </main>
+
+        {/* Column 2: Telugu Translation (తాత్కాలికంగా డమ్మీ డేటా) */}
+        <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-2xl flex flex-col h-[75vh]">
+          <div className="flex items-center mb-4">
+            <span className="text-xl mr-2">🗣️</span>
+            <h2 className="text-lg font-semibold text-orange-300">Telugu Translation</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
+             <p className="text-gray-500 text-sm text-center mt-10 italic">బ్యాకెండ్ కనెక్ట్ అయ్యాక ఇక్కడ తెలుగు వస్తుంది...</p>
+          </div>
+        </div>
+
+        {/* Column 3: AI Suggestions (తాత్కాలికంగా డమ్మీ డేటా) */}
+        <div className="bg-gray-800 rounded-xl p-5 border border-blue-900/50 shadow-2xl flex flex-col h-[75vh] relative overflow-hidden">
+          <div className="absolute top-0 right-0 bg-blue-600 text-xs px-3 py-1 font-bold rounded-bl-lg">Gemini 1.5 Active</div>
+          <div className="flex items-center mb-4 mt-2">
+            <span className="text-xl mr-2">🧠</span>
+            <h2 className="text-lg font-semibold text-emerald-400">Agent Suggestions</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
+            <p className="text-gray-500 text-sm text-center mt-10 italic">బ్యాకెండ్ కనెక్ట్ అయ్యాక ఇక్కడ ఆన్సర్స్ వస్తాయి...</p>
+          </div>
+        </div>
+
+      </div>
+
+      {/* SUMMARY MODAL (పాత కోడ్ లాగానే ఉంటుంది) */}
+      {showSummary && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSummary(false)}></div>
+          <div className="relative bg-gray-800 border border-gray-600 rounded-2xl shadow-2xl w-full max-w-3xl p-8 animate-in fade-in zoom-in duration-300">
+            <button onClick={() => setShowSummary(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✖</button>
+            <h2 className="text-2xl font-bold text-emerald-400 mb-6 flex items-center"><span className="mr-2">📋</span> మీటింగ్ సమ్మరీ & యాక్షన్ ఐటెమ్స్</h2>
+            <div className="space-y-4 text-gray-200">
+               <p className="text-gray-400 italic">Gemini API నుండి ఫైనల్ సమ్మరీ ఇక్కడ వస్తుంది...</p>
+            </div>
+            <div className="mt-8 flex justify-end">
+              <button onClick={() => setShowSummary(false)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors text-white">Close Summary</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
