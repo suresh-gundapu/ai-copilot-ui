@@ -4,17 +4,16 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function AgentUI() {
   const [isRecording, setIsRecording] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  
-  // TypeScript Fix: ఇది ఒక అర్రే (<any[]>) అని చెప్తున్నాం
   const [liveTranscript, setLiveTranscript] = useState<any[]>([]);
   
-  // TypeScript Fix: రిఫరెన్స్ లకి టైప్స్ ఇస్తున్నాం
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null); 
+  
+  // Kotha Ref: Mobile lo mic cut avvakunda track cheyadaniki
+  const isRecordingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // TypeScript Fix: విండో ని 'any' గా కాస్ట్ చేస్తున్నాం ఎర్రర్స్ రాకుండా
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (SpeechRecognition) {
@@ -23,7 +22,6 @@ export default function AgentUI() {
         recognitionRef.current.interimResults = false;
         recognitionRef.current.lang = 'en-US';
 
-        // TypeScript Fix: event కి 'any' టైప్ ఇచ్చాం
         recognitionRef.current.onresult = (event: any) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
@@ -33,11 +31,20 @@ export default function AgentUI() {
           }
         };
 
+        // Kotha Logic: Mobile browser mic ni aapeyste, ventane auto-restart chestundi
+        recognitionRef.current.onend = () => {
+          if (isRecordingRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (error) {
+              console.error("Mic restart wait...", error);
+            }
+          }
+        };
+
         recognitionRef.current.onerror = (event: any) => {
           console.error("మైక్ ఎర్రర్: ", event.error);
         };
-      } else {
-        alert("నీ బ్రౌజర్ లో Speech API కి సపోర్ట్ లేదు. క్రోమ్ (Chrome) వాడటానికి ట్రై చెయ్!");
       }
     }
   }, []);
@@ -51,10 +58,12 @@ export default function AgentUI() {
   const handleCallToggle = () => {
     if (isRecording) {
       setIsRecording(false);
+      isRecordingRef.current = false; // Call aapesam ani ref ki cheptunnam
       setShowSummary(true);
       if (recognitionRef.current) recognitionRef.current.stop();
     } else {
       setIsRecording(true);
+      isRecordingRef.current = true; // Call start ayyindi ani ref ki cheptunnam
       setShowSummary(false);
       setLiveTranscript([]);
       if (recognitionRef.current) recognitionRef.current.start();
@@ -63,8 +72,6 @@ export default function AgentUI() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-6 font-sans relative">
-      
-      {/* Navbar / Header */}
       <header className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
         <div>
           <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
@@ -76,16 +83,13 @@ export default function AgentUI() {
         <button 
           onClick={handleCallToggle}
           className={`px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 ${
-            isRecording 
-              ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
-              : 'bg-emerald-500 hover:bg-emerald-600'
+            isRecording ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-emerald-500 hover:bg-emerald-600'
           }`}
         >
           {isRecording ? '🛑 End Live Call' : '🎙️ Start Call'}
         </button>
       </header>
 
-      {/* 3-Column Layout */}
       <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all ${showSummary ? 'blur-sm pointer-events-none' : ''}`}>
         
         {/* Column 1: Live English Transcript */}
