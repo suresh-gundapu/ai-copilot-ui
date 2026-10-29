@@ -5,36 +5,35 @@ export default function AgentUI() {
   const [isRecording, setIsRecording] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   
-  // లైవ్ ఆడియో టెక్స్ట్ ని స్టోర్ చేసుకోవడానికి
-  const [liveTranscript, setLiveTranscript] = useState([]);
-  const recognitionRef = useRef(null);
-  const scrollRef = useRef(null); // ఆటోమేటిక్ గా కిందికి స్క్రోల్ అవ్వడానికి
+  // TypeScript Fix: ఇది ఒక అర్రే (<any[]>) అని చెప్తున్నాం
+  const [liveTranscript, setLiveTranscript] = useState<any[]>([]);
+  
+  // TypeScript Fix: రిఫరెన్స్ లకి టైప్స్ ఇస్తున్నాం
+  const recognitionRef = useRef<any>(null);
+  const scrollRef = useRef<HTMLDivElement>(null); 
 
   useEffect(() => {
-    // బ్రౌజర్ లో Web Speech API ఉందో లేదో చెక్ చేస్తున్నాం
     if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      // TypeScript Fix: విండో ని 'any' గా కాస్ట్ చేస్తున్నాం ఎర్రర్స్ రాకుండా
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (SpeechRecognition) {
         recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = true; // కంటిన్యూ గా వినడానికి
-        recognitionRef.current.interimResults = false; // ఫైనల్ రిజల్ట్ మాత్రమే తీసుకోవడానికి
-        recognitionRef.current.lang = 'en-US'; // ఇంగ్లీష్ భాష సెటప్
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = false;
+        recognitionRef.current.lang = 'en-US';
 
-        recognitionRef.current.onresult = (event) => {
+        // TypeScript Fix: event కి 'any' టైప్ ఇచ్చాం
+        recognitionRef.current.onresult = (event: any) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               const text = event.results[i][0].transcript;
-              
-              // వచ్చిన టెక్స్ట్ ని మన UI లిస్ట్ లోకి యాడ్ చేస్తున్నాం
               setLiveTranscript(prev => [...prev, { id: Date.now(), role: 'Speaker', text: text }]);
-              
-              // ఫ్యూచర్ లో ఈ 'text' నే మనం వెబ్‌సాకెట్స్ ద్వారా FastAPI బ్యాకెండ్ కి పంపుతాం
             }
           }
         };
 
-        recognitionRef.current.onerror = (event) => {
+        recognitionRef.current.onerror = (event: any) => {
           console.error("మైక్ ఎర్రర్: ", event.error);
         };
       } else {
@@ -43,25 +42,21 @@ export default function AgentUI() {
     }
   }, []);
 
-  // కొత్త టెక్స్ట్ రాగానే ఆటోమేటిక్ గా కిందికి స్క్రోల్ అయ్యే లాజిక్
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [liveTranscript]);
 
-  // కాల్ స్టార్ట్ / స్టాప్ బటన్ లాజిక్
   const handleCallToggle = () => {
     if (isRecording) {
-      // కాల్ ఆపినప్పుడు
       setIsRecording(false);
       setShowSummary(true);
       if (recognitionRef.current) recognitionRef.current.stop();
     } else {
-      // కాల్ స్టార్ట్ చేసినప్పుడు
       setIsRecording(true);
       setShowSummary(false);
-      setLiveTranscript([]); // కొత్త కాల్ స్టార్ట్ చేసినప్పుడు పాత టెక్స్ట్ క్లియర్ చేయడం
+      setLiveTranscript([]);
       if (recognitionRef.current) recognitionRef.current.start();
     }
   };
@@ -100,7 +95,6 @@ export default function AgentUI() {
             <h2 className="text-lg font-semibold text-gray-200">Live Transcript</h2>
           </div>
           
-          {/* ఇక్కడే మనం రియల్ టైమ్ టెక్స్ట్ చూపిస్తున్నాం */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
             {liveTranscript.length === 0 ? (
               <p className="text-gray-500 text-sm text-center mt-10 italic">
@@ -117,7 +111,7 @@ export default function AgentUI() {
           </div>
         </div>
 
-        {/* Column 2: Telugu Translation (తాత్కాలికంగా డమ్మీ డేటా) */}
+        {/* Column 2: Telugu Translation */}
         <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-2xl flex flex-col h-[75vh]">
           <div className="flex items-center mb-4">
             <span className="text-xl mr-2">🗣️</span>
@@ -128,7 +122,7 @@ export default function AgentUI() {
           </div>
         </div>
 
-        {/* Column 3: AI Suggestions (తాత్కాలికంగా డమ్మీ డేటా) */}
+        {/* Column 3: AI Suggestions */}
         <div className="bg-gray-800 rounded-xl p-5 border border-blue-900/50 shadow-2xl flex flex-col h-[75vh] relative overflow-hidden">
           <div className="absolute top-0 right-0 bg-blue-600 text-xs px-3 py-1 font-bold rounded-bl-lg">Gemini 1.5 Active</div>
           <div className="flex items-center mb-4 mt-2">
@@ -142,7 +136,7 @@ export default function AgentUI() {
 
       </div>
 
-      {/* SUMMARY MODAL (పాత కోడ్ లాగానే ఉంటుంది) */}
+      {/* SUMMARY MODAL */}
       {showSummary && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSummary(false)}></div>
