@@ -1,66 +1,78 @@
 "use client";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 
 export default function AgentUI() {
   const [isRecording, setIsRecording] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState<any[]>([]);
   
-  const recognitionRef = useRef<any>(null);
-  
-  // మొబైల్ లో మైక్ కట్ అవ్వకుండా ఆటో-రీస్టార్ట్ ట్రాక్ చేయడానికి
-  const isRecordingRef = useRef(false);
+  // కొత్త లాజిక్: ఒకేసారి English, Telugu, Suggestion మూడింటినీ స్టోర్ చేయడానికి
+  const [messages, setMessages] = useState<any[]>([]); 
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = true;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = 'en-US';
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
 
-        recognitionRef.current.onresult = (event: any) => {
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-              const text = event.results[i][0].transcript;
-              // కొత్త లాజిక్: స్క్రోల్ చేయాల్సిన పని లేకుండా కొత్త మెసేజ్ ముందే (Top) పడుతుంది
-              setLiveTranscript(prev => [{ id: Date.now(), role: 'Speaker', text: text }, ...prev]);
-            }
-          }
-        };
+  // కాల్ స్టార్ట్ చేయగానే...
+  const handleStartCall = async () => {
+    setIsRecording(true);
+    setShowSummary(false);
+    setMessages([]);
 
-        // ఆటో-రీస్టార్ట్ లాజిక్ (మొబైల్ బ్రౌజర్ ఆటోమేటిక్ గా మైక్ ఆపితే, వెంటనే మళ్లీ స్టార్ట్ చేస్తుంది)
-        recognitionRef.current.onend = () => {
-          if (isRecordingRef.current && recognitionRef.current) {
-            try {
-              recognitionRef.current.start();
-            } catch (error) {
-              console.error("Mic restart wait...", error);
-            }
-          }
-        };
+    try {
+      // 1. WebSocket కి కనెక్ట్ అవ్వడం (బ్యాకెండ్ కి)
+      // నెక్స్ట్ స్టెప్ లో ఇక్కడ మనం ngrok లింక్ పెడతాం
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+      socketRef.current = new WebSocket(wsUrl);
 
-        recognitionRef.current.onerror = (event: any) => {
-          console.error("మైక్ ఎర్రర్: ", event.error);
-        };
-      }
-    }
-  }, []);
+      // బ్యాకెండ్ నుండి జెమినీ రిజల్ట్ రాగానే...
+      socketRef.current.onmessage = (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        // కొత్త మెసేజ్ ముందే (Top) పడుతుంది
+        setMessages(prev => [{
+          id: Date.now(),
+          english: data.english,
+          telugu: data.telugu,
+          suggestion: data.answer
+        }, ...prev]);
+      };
 
-  const handleCallToggle = () => {
-    if (isRecording) {
+      // 2. లాప్‌టాప్ స్పీకర్ వాయిస్ రికార్డ్ అవ్వడానికి ఏ ఫిల్టర్స్ లేకుండా రా-ఆడియో సెటప్
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,   // ఎకో క్యాన్సిలేషన్ ఆఫ్
+          noiseSuppression: false, // నాయిస్ ఫిల్టర్ ఆఫ్
+          autoGainControl: false   // ఆటో వాల్యూమ్ ఆఫ్
+        }
+      });
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      // ప్రతి 2 సెకన్లకి ఆడియో ముక్కని బ్యాకెండ్ కి పంపుతుంది
+      mediaRecorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0 && socketRef.current?.readyState === WebSocket.OPEN) {
+          socketRef.current.send(event.data);
+        }
+      };
+
+      mediaRecorder.start(2000); // 2000ms (2 seconds) chunks
+    } catch (err) {
+      console.error("మైక్ లేదా వెబ్‌సాకెట్ కనెక్ట్ అవ్వలేదు:", err);
+      alert("మైక్ పర్మిషన్ ఇవ్వు మచ్చా!");
       setIsRecording(false);
-      isRecordingRef.current = false;
-      setShowSummary(true);
-      if (recognitionRef.current) recognitionRef.current.stop();
-    } else {
-      setIsRecording(true);
-      isRecordingRef.current = true;
-      setShowSummary(false);
-      setLiveTranscript([]);
-      if (recognitionRef.current) recognitionRef.current.start();
+    }
+  };
+
+  // కాల్ ఎండ్ చేయగానే...
+  const handleEndCall = () => {
+    setIsRecording(false);
+    setShowSummary(true);
+    
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+    if (socketRef.current) {
+      socketRef.current.close();
     }
   };
 
@@ -76,16 +88,15 @@ export default function AgentUI() {
           <p className="text-sm text-gray-400 mt-1">HMCA Legacy Data Fix - Context Active</p>
         </div>
         
-        <button 
-          onClick={handleCallToggle}
-          className={`px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 ${
-            isRecording 
-              ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
-              : 'bg-emerald-500 hover:bg-emerald-600'
-          }`}
-        >
-          {isRecording ? '🛑 End Live Call' : '🎙️ Start Call'}
-        </button>
+        {isRecording ? (
+          <button onClick={handleEndCall} className="px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 bg-red-500 hover:bg-red-600 animate-pulse">
+            🛑 End Live Call
+          </button>
+        ) : (
+          <button onClick={handleStartCall} className="px-6 py-2.5 rounded-full font-bold text-white transition-all shadow-lg hover:scale-105 bg-emerald-500 hover:bg-emerald-600">
+            🎙️ Start Call
+          </button>
+        )}
       </header>
 
       {/* 3-Column Layout */}
@@ -99,15 +110,14 @@ export default function AgentUI() {
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
-            {liveTranscript.length === 0 ? (
+            {messages.length === 0 ? (
               <p className="text-gray-500 text-sm text-center mt-10 italic">
-                {isRecording ? "Listening... మైక్ లో మాట్లాడండి..." : "కాల్ స్టార్ట్ చేయడానికి పైన బటన్ నొక్కండి."}
+                {isRecording ? "Listening & Sending to Backend..." : "కాల్ స్టార్ట్ చేయడానికి పైన బటన్ నొక్కండి."}
               </p>
             ) : (
-              liveTranscript.map((msg) => (
+              messages.map((msg) => (
                 <div key={msg.id} className="bg-gray-700/50 p-3 rounded-lg border border-gray-600/50 transition-all animate-in fade-in slide-in-from-top-2">
-                  <p className="text-sm text-blue-300 font-semibold mb-1">{msg.role}:</p>
-                  <p className="text-md leading-relaxed">{msg.text}</p>
+                  <p className="text-md leading-relaxed text-gray-200">{msg.english}</p>
                 </div>
               ))
             )}
@@ -121,7 +131,15 @@ export default function AgentUI() {
             <h2 className="text-lg font-semibold text-orange-300">Telugu Translation</h2>
           </div>
           <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
-             <p className="text-gray-500 text-sm text-center mt-10 italic">బ్యాకెండ్ కనెక్ట్ అయ్యాక ఇక్కడ తెలుగు వస్తుంది...</p>
+             {messages.length === 0 ? (
+               <p className="text-gray-500 text-sm text-center mt-10 italic">ట్రాన్స్‌లేషన్ కోసం వెయిటింగ్...</p>
+             ) : (
+               messages.map((msg) => (
+                 <div key={msg.id} className="bg-gray-700/50 p-3 rounded-lg border-l-2 border-orange-400 mb-3 animate-in fade-in slide-in-from-top-2">
+                   <p className="text-md text-gray-200">{msg.telugu}</p>
+                 </div>
+               ))
+             )}
           </div>
         </div>
 
@@ -133,7 +151,19 @@ export default function AgentUI() {
             <h2 className="text-lg font-semibold text-emerald-400">Agent Suggestions</h2>
           </div>
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-gray-600">
-            <p className="text-gray-500 text-sm text-center mt-10 italic">బ్యాకెండ్ కనెక్ట్ అయ్యాక ఇక్కడ ఆన్సర్స్ వస్తాయి...</p>
+             {messages.length === 0 ? (
+               <p className="text-gray-500 text-sm text-center mt-10 italic">ఆన్సర్స్ కోసం వెయిటింగ్...</p>
+             ) : (
+               messages.map((msg) => (
+                 // కేవలం ఆన్సర్ ఉంటేనే ఈ బాక్స్ చూపిస్తుంది
+                 msg.suggestion && (
+                   <div key={msg.id} className="bg-blue-900/20 p-4 rounded-lg border-l-4 border-emerald-500 shadow-inner mb-3 animate-in fade-in slide-in-from-top-2">
+                     <p className="text-xs font-bold text-emerald-400 mb-2 uppercase">Suggested Answer:</p>
+                     <p className="text-md text-gray-200 font-medium">{msg.suggestion}</p>
+                   </div>
+                 )
+               ))
+             )}
           </div>
         </div>
 
@@ -147,7 +177,7 @@ export default function AgentUI() {
             <button onClick={() => setShowSummary(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✖</button>
             <h2 className="text-2xl font-bold text-emerald-400 mb-6 flex items-center"><span className="mr-2">📋</span> మీటింగ్ సమ్మరీ & యాక్షన్ ఐటెమ్స్</h2>
             <div className="space-y-4 text-gray-200">
-               <p className="text-gray-400 italic">Gemini API నుండి ఫైనల్ సమ్మరీ ఇక్కడ వస్తుంది...</p>
+               <p className="text-gray-400 italic">Gemini API నుండి ఫైనల్ సమ్మరీ వస్తుంది...</p>
             </div>
             <div className="mt-8 flex justify-end">
               <button onClick={() => setShowSummary(false)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold transition-colors text-white">Close Summary</button>
